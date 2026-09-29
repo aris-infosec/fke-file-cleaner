@@ -6,11 +6,16 @@ title FKE File Cleaner - Aris Patronis
 :: ============================================================
 ::                    FKE FILE CLEANER
 :: ============================================================
+::
 :: Scans ONLY the folder containing this BAT and all
 :: subdirectories for *.fke files.
 ::
+:: Every run performs a completely NEW scan.
+:: Existing log files are ignored.
+::
 :: Created by Aris Patronis
 :: ============================================================
+
 
 :: ------------------------------------------------------------
 :: SETTINGS
@@ -19,29 +24,54 @@ title FKE File Cleaner - Aris Patronis
 set "SCAN_DIR=%~dp0"
 set "MAX_FILES=50000"
 
-:: White text on black background
 color 07
 
+
 :: ------------------------------------------------------------
-:: Safety: do not allow scanning an entire drive
+:: SAFETY - DO NOT SCAN DRIVE ROOT
 :: ------------------------------------------------------------
 
 if "%SCAN_DIR:~-3%"==":\" goto DRIVE_ROOT_ERROR
 
+
 :: ------------------------------------------------------------
-:: Create timestamp
+:: CREATE UNIQUE LOG FILE
 :: ------------------------------------------------------------
 
-for /f "delims=" %%A in ('powershell.exe -NoProfile -Command "(Get-Date).ToString('yyyy-MM-dd_HH-mm-ss')" 2^>nul') do set "TIMESTAMP=%%A"
+for /f "delims=" %%A in ('powershell.exe -NoProfile -Command "(Get-Date).ToString('yyyy-MM-dd_HH-mm-ss-fff')" 2^>nul') do set "TIMESTAMP=%%A"
 
 if not defined TIMESTAMP set "TIMESTAMP=unknown"
 
-set "LOGFILE=%SCAN_DIR%FKE-Cleaner-%TIMESTAMP%.log"
+set "LOGFILE=%SCAN_DIR%FKE-Cleaner-%TIMESTAMP%-%RANDOM%.log"
+
+:: Temporary files are created outside the scan folder.
 set "TEMPPS=%TEMP%\FKE-Cleaner-%RANDOM%-%RANDOM%.ps1"
 set "RESULTFILE=%TEMP%\FKE-Cleaner-Result-%RANDOM%-%RANDOM%.txt"
 
+
 :: ------------------------------------------------------------
-:: Header
+:: CREATE LOG
+:: ------------------------------------------------------------
+
+(
+    echo ============================================================
+    echo FKE FILE CLEANER LOG
+    echo ============================================================
+    echo Created by Aris Patronis
+    echo Started: %DATE% %TIME%
+    echo Scan location: %SCAN_DIR%
+    echo Search: *.fke
+    echo Maximum files: %MAX_FILES%
+    echo.
+    echo This is a NEW scan.
+    echo Existing log files are ignored.
+    echo ============================================================
+    echo.
+) > "%LOGFILE%"
+
+
+:: ------------------------------------------------------------
+:: MAIN HEADER
 :: ------------------------------------------------------------
 
 cls
@@ -71,38 +101,24 @@ echo.
 echo ------------------------------------------------------------
 echo.
 
-:: ------------------------------------------------------------
-:: Create log
-:: ------------------------------------------------------------
-
-(
-    echo ============================================================
-    echo FKE FILE CLEANER LOG
-    echo ============================================================
-    echo Created by Aris Patronis
-    echo Started: %DATE% %TIME%
-    echo Scan location: %SCAN_DIR%
-    echo Search: *.fke
-    echo Maximum files: %MAX_FILES%
-    echo ============================================================
-    echo.
-) > "%LOGFILE%"
 
 :: ------------------------------------------------------------
-:: Ask before scanning
+:: START SCAN QUESTION
 :: ------------------------------------------------------------
 
 echo ============================================================
 echo                         READY
 echo ============================================================
 echo.
-echo The program will scan:
+echo The program will perform a NEW scan of:
 echo.
 echo   %SCAN_DIR%
 echo.
 echo This folder and ALL subfolders will be searched for:
 echo.
 echo   *.fke
+echo.
+echo Existing log files will NOT affect this scan.
 echo.
 echo NO FILES WILL BE DELETED DURING THE SCAN.
 echo.
@@ -123,8 +139,8 @@ goto END
 
 :START_SCAN
 
-color 07
 cls
+color 07
 
 echo.
 echo ============================================================
@@ -142,11 +158,15 @@ echo %SCAN_DIR%
 echo.
 echo Searching for *.fke ...
 echo.
+echo This is a NEW scan.
+echo.
 
 >>"%LOGFILE%" echo Scan started: %DATE% %TIME%
+>>"%LOGFILE%" echo.
+
 
 :: ------------------------------------------------------------
-:: Pass variables to PowerShell
+:: PASS VARIABLES TO POWERSHELL
 :: ------------------------------------------------------------
 
 set "FKE_SCAN_ROOT=%SCAN_DIR%"
@@ -154,11 +174,13 @@ set "FKE_LOG=%LOGFILE%"
 set "FKE_MAX=%MAX_FILES%"
 set "FKE_RESULT=%RESULTFILE%"
 
+
 :: ------------------------------------------------------------
-:: Create temporary PowerShell script
+:: CREATE POWERSHELL SCRIPT
 :: ------------------------------------------------------------
 
 > "%TEMPPS%" echo $ErrorActionPreference = 'Continue'
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo $root = $env:FKE_SCAN_ROOT
 >>"%TEMPPS%" echo $log = $env:FKE_LOG
 >>"%TEMPPS%" echo $maxFiles = [int]$env:FKE_MAX
@@ -166,8 +188,13 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo $scanErrors = @()
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo Write-Host '[*] Scanning...' -ForegroundColor White
 >>"%TEMPPS%" echo Write-Host ''
+>>"%TEMPPS%" echo Write-Host 'Scanning...' -ForegroundColor White
+>>"%TEMPPS%" echo Write-Host ''
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # ALWAYS PERFORM A FRESH SCAN
+>>"%TEMPPS%" echo # --------------------------------------------------------
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo $files = @(Get-ChildItem -LiteralPath $root -Filter '*.fke' -File -Recurse -Force -ErrorAction SilentlyContinue -ErrorVariable scanErrors)
 >>"%TEMPPS%" echo.
@@ -180,12 +207,18 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo         $target = [string]$err.Exception.Message
 >>"%TEMPPS%" echo     }
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo     Write-Host ('[WARNING] Could not access: ' + $target) -ForegroundColor Red
+>>"%TEMPPS%" echo     Write-Host ('[WARNING] Could not access: ' + $target) -ForegroundColor Yellow
 >>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('[WARNING] Could not access: ' + $target)
 >>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # SAFETY LIMIT
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo if ($files.Count -gt $maxFiles^) {
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Set-Content -LiteralPath $resultFile -Value 'LIMIT'
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Write-Host ''
 >>"%TEMPPS%" echo     Write-Host '============================================================' -ForegroundColor Red
 >>"%TEMPPS%" echo     Write-Host '                 SAFETY LIMIT EXCEEDED' -ForegroundColor Red
@@ -195,12 +228,22 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo     Write-Host ('Maximum allowed: ' + $maxFiles) -ForegroundColor Red
 >>"%TEMPPS%" echo     Write-Host ''
 >>"%TEMPPS%" echo     Write-Host 'NO FILES WILL BE DELETED.' -ForegroundColor Red
+>>"%TEMPPS%" echo     Write-Host ''
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('SAFETY LIMIT EXCEEDED: ' + $files.Count)
->>"%TEMPPS%" echo     exit 2
+>>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('Finished: ' + (Get-Date))
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo     exit
 >>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # NOTHING FOUND
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo if ($files.Count -eq 0^) {
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Set-Content -LiteralPath $resultFile -Value 'NONE'
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Write-Host ''
 >>"%TEMPPS%" echo     Write-Host '============================================================' -ForegroundColor Green
 >>"%TEMPPS%" echo     Write-Host '                     SCAN COMPLETE' -ForegroundColor Green
@@ -208,20 +251,28 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo     Write-Host ''
 >>"%TEMPPS%" echo     Write-Host 'NO .fke FILES WERE FOUND.' -ForegroundColor Green
 >>"%TEMPPS%" echo     Write-Host ''
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     if ($warnings -gt 0^) {
->>"%TEMPPS%" echo         Write-Host ('WARNING: ' + $warnings + ' location(s) could not be scanned.') -ForegroundColor Red
+>>"%TEMPPS%" echo         Write-Host ('WARNING: ' + $warnings + ' location(s) could not be scanned.') -ForegroundColor Yellow
 >>"%TEMPPS%" echo         Write-Host ''
 >>"%TEMPPS%" echo     }
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value 'No .fke files were found.'
 >>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('Warnings: ' + $warnings)
->>"%TEMPPS%" echo     exit 0
+>>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('Finished: ' + (Get-Date))
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo     exit
 >>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo Set-Content -LiteralPath $resultFile -Value 'FOUND'
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # FILES FOUND
+>>"%TEMPPS%" echo # --------------------------------------------------------
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo $totalBytes = ($files ^| Measure-Object -Property Length -Sum^).Sum
 >>"%TEMPPS%" echo if ($null -eq $totalBytes^) { $totalBytes = 0 }
 >>"%TEMPPS%" echo $totalMB = [math]::Round($totalBytes / 1MB, 2)
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo Set-Content -LiteralPath $resultFile -Value 'FOUND'
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo Write-Host ''
 >>"%TEMPPS%" echo Write-Host '============================================================' -ForegroundColor Red
@@ -231,8 +282,6 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo Write-Host ('Found:      ' + $files.Count + ' file(s)') -ForegroundColor Red
 >>"%TEMPPS%" echo Write-Host ('Total size: ' + $totalMB + ' MB') -ForegroundColor Red
 >>"%TEMPPS%" echo Write-Host ('Warnings:   ' + $warnings) -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo Write-Host 'FILES FOUND:' -ForegroundColor Red
 >>"%TEMPPS%" echo Write-Host ''
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo Add-Content -LiteralPath $log -Value ('Found: ' + $files.Count + ' file(s)')
@@ -246,37 +295,33 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('[FOUND] ' + $file.FullName)
 >>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # SIMPLE Y/N QUESTION
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo Write-Host '============================================================' -ForegroundColor Red
+>>"%TEMPPS%" echo Write-Host '============================================================'
 >>"%TEMPPS%" echo Write-Host ''
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo if ($warnings -gt 0^) {
->>"%TEMPPS%" echo     Write-Host 'WARNING: Some locations could not be scanned.' -ForegroundColor Red
->>"%TEMPPS%" echo     Write-Host 'Those locations are NOT included above.' -ForegroundColor Red
->>"%TEMPPS%" echo     Write-Host ''
->>"%TEMPPS%" echo }
->>"%TEMPPS%" echo.
->>"%TEMPPS%" echo $answer = Read-Host ('Delete ALL ' + $files.Count + ' listed file(s)? Enter Y or N')
+>>"%TEMPPS%" echo $answer = Read-Host ('Delete all ' + $files.Count + ' file(s)? [Y/N]')
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo if ($answer -notmatch '^[Yy]$'^) {
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo     Set-Content -LiteralPath $resultFile -Value 'CANCELLED'
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     Write-Host ''
->>"%TEMPPS%" echo     Write-Host 'CANCELLED - No files were deleted.' -ForegroundColor Red
->>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value 'CANCELLED - No files deleted.'
->>"%TEMPPS%" echo     exit 0
+>>"%TEMPPS%" echo     Write-Host 'CANCELLED - No files were deleted.' -ForegroundColor Yellow
+>>"%TEMPPS%" echo     Write-Host ''
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value 'CANCELLED - No files were deleted.'
+>>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value ('Finished: ' + (Get-Date))
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo     exit
 >>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo Write-Host 'WARNING: This operation permanently deletes the files.' -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo.
->>"%TEMPPS%" echo $confirmation = Read-Host ('Type DELETE ' + $files.Count + ' FILES to confirm')
->>"%TEMPPS%" echo.
->>"%TEMPPS%" echo if ($confirmation -ne ('DELETE ' + $files.Count + ' FILES'^)) {
->>"%TEMPPS%" echo     Write-Host ''
->>"%TEMPPS%" echo     Write-Host 'CANCELLED - Confirmation did not match.' -ForegroundColor Red
->>"%TEMPPS%" echo     Add-Content -LiteralPath $log -Value 'CANCELLED - Confirmation did not match.'
->>"%TEMPPS%" echo     exit 0
->>"%TEMPPS%" echo }
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # DELETE
+>>"%TEMPPS%" echo # --------------------------------------------------------
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo Write-Host ''
 >>"%TEMPPS%" echo Write-Host '============================================================' -ForegroundColor Red
@@ -287,49 +332,63 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo $deleted = 0
 >>"%TEMPPS%" echo $failed = 0
 >>"%TEMPPS%" echo $gone = 0
->>"%TEMPPS%" echo $i = 0
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo foreach ($file in $files^) {
->>"%TEMPPS%" echo     $i++
->>"%TEMPPS%" echo     $percent = [math]::Round(($i / $files.Count^) * 100, 1^)
->>"%TEMPPS%" echo.
->>"%TEMPPS%" echo     Write-Progress -Activity 'Deleting .fke files' -Status $file.FullName -PercentComplete $percent
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     if (-not (Test-Path -LiteralPath $file.FullName -PathType Leaf^)) {
 >>"%TEMPPS%" echo         $gone++
->>"%TEMPPS%" echo         Write-Host ('[ALREADY GONE] ' + $file.FullName) -ForegroundColor Red
+>>"%TEMPPS%" echo         Write-Host ('[ALREADY GONE] ' + $file.FullName) -ForegroundColor Yellow
 >>"%TEMPPS%" echo         Add-Content -LiteralPath $log -Value ('[ALREADY GONE] ' + $file.FullName)
 >>"%TEMPPS%" echo         continue
 >>"%TEMPPS%" echo     }
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     try {
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo         Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo         $deleted++
->>"%TEMPPS%" echo         Write-Host ('[DELETED] ' + $file.FullName) -ForegroundColor Red
+>>"%TEMPPS%" echo         Write-Host ('[DELETED] ' + $file.FullName) -ForegroundColor Green
 >>"%TEMPPS%" echo         Add-Content -LiteralPath $log -Value ('[DELETED] ' + $file.FullName)
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     }
 >>"%TEMPPS%" echo     catch {
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo         $failed++
 >>"%TEMPPS%" echo         Write-Host ('[FAILED] ' + $file.FullName) -ForegroundColor Red
 >>"%TEMPPS%" echo         Write-Host ('         ' + $_.Exception.Message) -ForegroundColor Red
 >>"%TEMPPS%" echo         Add-Content -LiteralPath $log -Value ('[FAILED] ' + $file.FullName + ' - ' + $_.Exception.Message)
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo     }
 >>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo Write-Progress -Activity 'Deleting .fke files' -Completed
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo # FINAL RESULT
+>>"%TEMPPS%" echo # --------------------------------------------------------
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo if ($failed -eq 0^) {
+>>"%TEMPPS%" echo     Set-Content -LiteralPath $resultFile -Value 'SUCCESS'
+>>"%TEMPPS%" echo } else {
+>>"%TEMPPS%" echo     Set-Content -LiteralPath $resultFile -Value 'FAILED'
+>>"%TEMPPS%" echo }
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo Write-Host '============================================================' -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host '                      [3/3] COMPLETE' -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host '============================================================' -ForegroundColor Red
+>>"%TEMPPS%" echo Write-Host '============================================================'
+>>"%TEMPPS%" echo Write-Host '                      [3/3] COMPLETE'
+>>"%TEMPPS%" echo Write-Host '============================================================'
 >>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo Write-Host ('Found:        ' + $files.Count) -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ('Deleted:      ' + $deleted) -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ('Already gone: ' + $gone) -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ('Failed:       ' + $failed) -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ('Warnings:     ' + $warnings) -ForegroundColor Red
->>"%TEMPPS%" echo Write-Host ''
->>"%TEMPPS%" echo Write-Host ('Log saved to: ' + $log) -ForegroundColor Red
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo if ($failed -eq 0^) {
+>>"%TEMPPS%" echo     Write-Host 'ALL FILES HAVE BEEN DELETED.' -ForegroundColor Green
+>>"%TEMPPS%" echo } else {
+>>"%TEMPPS%" echo     Write-Host 'DELETION FINISHED WITH ERRORS.' -ForegroundColor Red
+>>"%TEMPPS%" echo }
+>>"%TEMPPS%" echo.
+>>"%TEMPPS%" echo Write-Host ('Found:        ' + $files.Count)
+>>"%TEMPPS%" echo Write-Host ('Deleted:      ' + $deleted) -ForegroundColor Green
+>>"%TEMPPS%" echo Write-Host ('Already gone: ' + $gone)
+>>"%TEMPPS%" echo Write-Host ('Failed:       ' + $failed)
+>>"%TEMPPS%" echo Write-Host ('Warnings:     ' + $warnings)
+>>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo.
 >>"%TEMPPS%" echo Add-Content -LiteralPath $log -Value ''
 >>"%TEMPPS%" echo Add-Content -LiteralPath $log -Value 'SUMMARY'
@@ -340,18 +399,20 @@ set "FKE_RESULT=%RESULTFILE%"
 >>"%TEMPPS%" echo Add-Content -LiteralPath $log -Value ('Warnings: ' + $warnings)
 >>"%TEMPPS%" echo Add-Content -LiteralPath $log -Value ('Finished: ' + (Get-Date))
 >>"%TEMPPS%" echo.
->>"%TEMPPS%" echo exit 0
+>>"%TEMPPS%" echo exit
+
 
 :: ------------------------------------------------------------
-:: Run PowerShell
+:: RUN POWERSHELL
 :: ------------------------------------------------------------
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%TEMPPS%"
 
 set "PS_EXIT=%ERRORLEVEL%"
 
+
 :: ------------------------------------------------------------
-:: Determine result
+:: READ SIMPLE RESULT
 :: ------------------------------------------------------------
 
 set "SCAN_RESULT=UNKNOWN"
@@ -360,22 +421,130 @@ if exist "%RESULTFILE%" (
     set /p "SCAN_RESULT="<"%RESULTFILE%"
 )
 
+
 :: ------------------------------------------------------------
-:: Delete temporary files
+:: CLEAN TEMPORARY FILES
 :: ------------------------------------------------------------
 
 del /q "%TEMPPS%" >nul 2>&1
 del /q "%RESULTFILE%" >nul 2>&1
 
+
 :: ------------------------------------------------------------
-:: Final screen
+:: ROUTE RESULT
 :: ------------------------------------------------------------
 
-if /I "%SCAN_RESULT%"=="NONE" goto FINAL_NONE
-if /I "%SCAN_RESULT%"=="FOUND" goto FINAL_FOUND
-if /I "%SCAN_RESULT%"=="LIMIT" goto FINAL_LIMIT
+if "%SCAN_RESULT%"=="NONE" goto FINAL_NONE
+if "%SCAN_RESULT%"=="CANCELLED" goto FINAL_CANCELLED
+if "%SCAN_RESULT%"=="LIMIT" goto FINAL_LIMIT
+if "%SCAN_RESULT%"=="SUCCESS" goto FINAL_SUCCESS
+if "%SCAN_RESULT%"=="FAILED" goto FINAL_FAILED
 
 goto FINAL_ERROR
+
+
+:: ============================================================
+:: SUCCESS
+:: ============================================================
+
+:FINAL_SUCCESS
+
+color 0A
+cls
+
+echo.
+echo ============================================================
+echo                    FKE FILE CLEANER
+echo ============================================================
+echo.
+echo                    Created by Aris Patronis
+echo.
+echo ============================================================
+echo.
+echo.
+echo                    DELETION COMPLETE
+echo.
+echo.
+echo              ALL .FKE FILES HAVE BEEN DELETED
+echo.
+echo ============================================================
+echo.
+echo The files that were deleted were:
+echo.
+echo ------------------------------------------------------------
+echo.
+
+findstr /C:"[DELETED]" "%LOGFILE%"
+
+echo.
+echo ------------------------------------------------------------
+echo.
+echo Summary:
+echo.
+echo The deletion operation completed successfully.
+echo.
+echo No deletion errors were reported.
+echo.
+echo Log file:
+echo %LOGFILE%
+echo.
+echo ============================================================
+echo.
+echo Press any key to close this window...
+pause >nul
+
+exit /b 0
+
+
+:: ============================================================
+:: DELETION FAILED
+:: ============================================================
+
+:FINAL_FAILED
+
+color 0C
+cls
+
+echo.
+echo ============================================================
+echo                    FKE FILE CLEANER
+echo ============================================================
+echo.
+echo                    Created by Aris Patronis
+echo.
+echo ============================================================
+echo.
+echo.
+echo                 DELETION FINISHED WITH ERRORS
+echo.
+echo.
+echo Some .fke files could not be deleted.
+echo.
+echo ============================================================
+echo.
+echo Files successfully deleted:
+echo.
+findstr /C:"[DELETED]" "%LOGFILE%"
+echo.
+echo ------------------------------------------------------------
+echo.
+echo Files that failed:
+echo.
+findstr /C:"[FAILED]" "%LOGFILE%"
+echo.
+echo ============================================================
+echo.
+echo Please check the log for complete details.
+echo.
+echo Log file:
+echo %LOGFILE%
+echo.
+echo ============================================================
+echo.
+echo Press any key to close this window...
+pause >nul
+
+exit /b 1
 
 
 :: ============================================================
@@ -405,6 +574,8 @@ echo.
 echo.
 echo                 No .fke files were detected.
 echo.
+echo                 Nothing needed to be deleted.
+echo.
 echo ============================================================
 echo.
 echo Log file:
@@ -419,12 +590,12 @@ exit /b 0
 
 
 :: ============================================================
-:: FILES FOUND
+:: DELETION CANCELLED
 :: ============================================================
 
-:FINAL_FOUND
+:FINAL_CANCELLED
 
-color 0C
+color 07
 cls
 
 echo.
@@ -437,13 +608,10 @@ echo.
 echo ============================================================
 echo.
 echo.
-echo                    FILES WERE FOUND
+echo                       CANCELLED
 echo.
 echo.
-echo              Review the results shown above.
-echo.
-echo              The scan detected one or more
-echo                    .fke files.
+echo                 No files were deleted.
 echo.
 echo ============================================================
 echo.
@@ -523,6 +691,9 @@ echo The scanner did not return a normal result.
 echo.
 echo PowerShell exit code: %PS_EXIT%
 echo.
+echo Result returned:
+echo %SCAN_RESULT%
+echo.
 echo ============================================================
 echo.
 echo Log file:
@@ -533,7 +704,7 @@ echo.
 echo Press any key to close this window...
 pause >nul
 
-exit /b %PS_EXIT%
+exit /b 1
 
 
 :: ============================================================
